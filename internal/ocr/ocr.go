@@ -310,7 +310,7 @@ func ProcessWithDeepSeek(text string, apiKey string) (string, error) {
 	}
 
 	// 创建HTTP客户端
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 
 	// 创建HTTP请求
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(reqBody))
