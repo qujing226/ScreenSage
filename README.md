@@ -47,6 +47,7 @@ ScreenSage 是一款屏幕识图+智能问答助手，通过截取屏幕内容�
 3. 系统自动识别截图中的文字并发送至 AI 模型
 4. 在应用界面查看 AI 回答结果
 5. 通过历史记录时间轴查看之前的问答记录
+![d51860c8a1cb04ec88f95923a8149cb0](https://github.com/user-attachments/assets/66ab17fd-11d0-48d0-83c8-c3d683db0cc2)
 
 ## 技术架构
 
