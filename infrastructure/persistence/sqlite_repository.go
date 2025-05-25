@@ -91,6 +91,7 @@ func (r *SQLiteRepository) Save(screenshot *model.Screenshot) (int64, error) {
 		screenshot.Thumbnail,
 		screenshot.Text,
 		screenshot.Answer,
+		screenshot.Title,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("插入截图记录失败: %v", err)

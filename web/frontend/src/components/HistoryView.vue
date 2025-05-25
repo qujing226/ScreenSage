@@ -36,7 +36,7 @@
             
             <v-list-item-content>
               <v-list-item-title class="text-truncate">
-                {{ item.text ? (item.text.split('\n')[0] || '无文本内容').substring(0, 30) : '无文本内容' }}
+                {{ extractTitle(item) }}
               </v-list-item-title>
               <v-list-item-subtitle>
                 {{ new Date(item.timestamp).toLocaleString() }}
@@ -88,7 +88,7 @@
               
               <div class="text-subtitle-1 font-weight-medium mt-3 mb-2">AI分析</div>
               <v-card outlined class="pa-3">
-                <div class="text-body-1 answer-text">{{ selectedItem.answer }}</div>
+                <div class="text-body-1 answer-text" v-html="renderMarkdown(selectedItem.answer)"></div>
               </v-card>
             </v-col>
           </v-row>
@@ -99,6 +99,8 @@
 </template>
 
 <script>
+import MarkdownIt from 'markdown-it';
+
 export default {
   name: 'HistoryView',
   data() {
@@ -106,7 +108,8 @@ export default {
       historyRecords: [],
       loadingHistory: false,
       showHistoryDetail: false,
-      selectedItem: null
+      selectedItem: null,
+      md: new MarkdownIt()
     }
   },
   mounted() {
@@ -114,6 +117,25 @@ export default {
     this.loadHistory()
   },
   methods: {
+    renderMarkdown(text) {
+      if (!text) return '';
+      return this.md.render(text);
+    },
+    extractTitle(item) {
+      // 首先检查是否有服务器提供的标题
+      if (item.title) {
+        return item.title.trim();
+      }
+      // 其次尝试从AI回答中提取【标题】格式的内容
+      if (item.answer) {
+        const titleMatch = item.answer.match(/【标题】([^\n]+)/);
+        if (titleMatch && titleMatch[1]) {
+          return titleMatch[1].trim();
+        }
+      }
+      // 如果没有找到标题，则使用OCR文本的第一行
+      return item.text ? (item.text.split('\n')[0] || '无文本内容').substring(0, 30) : '无文本内容';
+    },
     setupWebSocketListeners() {
       // 确保WebSocket客户端已经初始化
       if (!this.$ws) {
@@ -169,8 +191,48 @@ export default {
 }
 
 .answer-text {
-  white-space: pre-line;
   word-break: break-word;
+}
+
+.answer-text :deep(pre) {
+  background-color: #f5f5f5;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.answer-text :deep(code) {
+  background-color: #f5f5f5;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.answer-text :deep(ul), .answer-text :deep(ol) {
+  padding-left: 20px;
+}
+
+.answer-text :deep(blockquote) {
+  border-left: 4px solid #ccc;
+  padding-left: 16px;
+  margin-left: 0;
+  color: #666;
+}
+
+.answer-text :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.answer-text :deep(th), .answer-text :deep(td) {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.answer-text :deep(th) {
+  background-color: #f2f2f2;
 }
 
 /* 移动端优化 */

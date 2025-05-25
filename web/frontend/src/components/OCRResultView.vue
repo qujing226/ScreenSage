@@ -39,7 +39,7 @@
                 
                 <h3>AI处理结果</h3>
                 <v-card outlined class="pa-2">
-                  <div class="text-body-1">{{ currentResult.answer }}</div>
+                  <div class="text-body-1" v-html="renderMarkdown(currentResult.answer)"></div>
                 </v-card>
               </v-col>
             </v-row>
@@ -86,6 +86,9 @@
                   class="grey lighten-2"
                 ></v-img>
               </template>
+              <template v-slot:item.title="{ item }">
+                {{ extractTitle(item) }}
+              </template>
               <template v-slot:item.timestamp="{ item }">
                 {{ new Date(item.timestamp).toLocaleString() }}
               </template>
@@ -107,6 +110,8 @@
 </template>
 
 <script>
+import MarkdownIt from 'markdown-it';
+
 export default {
   name: 'OCRResultView',
   data() {
@@ -116,8 +121,10 @@ export default {
       currentProcessId: null,
       historyRecords: [],
       loadingHistory: false,
+      md: new MarkdownIt(),
       headers: [
         { text: '缩略图', value: 'thumbnail', sortable: false },
+        { text: '标题', value: 'title', sortable: true },
         { text: '时间', value: 'timestamp' },
         { text: '操作', value: 'actions', sortable: false }
       ]
@@ -128,6 +135,25 @@ export default {
     this.loadHistory()
   },
   methods: {
+    renderMarkdown(text) {
+      if (!text) return '';
+      return this.md.render(text);
+    },
+    extractTitle(item) {
+      // 首先检查是否有服务器提供的标题
+      if (item.title) {
+        return item.title.trim();
+      }
+      // 其次尝试从AI回答中提取【标题】格式的内容
+      if (item.answer) {
+        const titleMatch = item.answer.match(/【标题】([^\n]+)/);
+        if (titleMatch && titleMatch[1]) {
+          return titleMatch[1].trim();
+        }
+      }
+      // 如果没有找到标题，则使用OCR文本的第一行
+      return item.text ? (item.text.split('\n')[0] || '无文本内容').substring(0, 30) : '无文本内容';
+    },
     setupWebSocketListeners() {
       // 确保WebSocket客户端已经初始化
       if (!this.$ws) {
@@ -160,7 +186,9 @@ export default {
             id: data.id,
             text: data.text,
             answer: data.answer,
-            timestamp: data.timestamp
+            title: data.title,
+            timestamp: data.timestamp,
+            thumbnail: data.thumbnail
           }
           
           // 刷新历史记录
@@ -215,5 +243,46 @@ pre {
   word-wrap: break-word;
   max-height: 200px;
   overflow-y: auto;
+}
+
+.text-body-1 :deep(pre) {
+  background-color: #f5f5f5;
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.text-body-1 :deep(code) {
+  background-color: #f5f5f5;
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+}
+
+.text-body-1 :deep(ul), .text-body-1 :deep(ol) {
+  padding-left: 20px;
+}
+
+.text-body-1 :deep(blockquote) {
+  border-left: 4px solid #ccc;
+  padding-left: 16px;
+  margin-left: 0;
+  color: #666;
+}
+
+.text-body-1 :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.text-body-1 :deep(th), .text-body-1 :deep(td) {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.text-body-1 :deep(th) {
+  background-color: #f2f2f2;
 }
 </style>

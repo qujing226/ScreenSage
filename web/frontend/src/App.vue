@@ -33,7 +33,19 @@
         
         <!-- 桌面端视图 -->
         <div v-if="!$vuetify.display.mobile">
-          <OCRResultView ref="ocrResultView" />
+          <v-tabs v-model="activeTab" background-color="primary" dark>
+            <v-tab value="ai">AI内容</v-tab>
+            <v-tab value="history">历史记录</v-tab>
+          </v-tabs>
+          
+          <v-tabs-items v-model="activeTab">
+            <v-tab-item value="ai">
+              <AIContentView ref="aiContentView" />
+            </v-tab-item>
+            <v-tab-item value="history">
+              <HistoryView ref="historyView" />
+            </v-tab-item>
+          </v-tabs-items>
         </div>
       </v-container>
     </v-main>
@@ -165,15 +177,10 @@ export default {
     },
     refreshData() {
       // 根据当前激活的标签页刷新相应的组件数据
-      if (this.$vuetify.display.mobile) {
-        if (this.activeTab === 'ai') {
-          // AI内容视图不需要主动刷新，它会通过WebSocket自动更新
-        } else if (this.activeTab === 'history') {
-          this.$refs.historyView && this.$refs.historyView.loadHistory();
-        }
-      } else {
-        // 桌面端刷新OCRResultView
-        this.$refs.ocrResultView && this.$refs.ocrResultView.loadHistory();
+      if (this.activeTab === 'ai') {
+        // AI内容视图不需要主动刷新，它会通过WebSocket自动更新
+      } else if (this.activeTab === 'history') {
+        this.$refs.historyView && this.$refs.historyView.loadHistory();
       }
     }
   }

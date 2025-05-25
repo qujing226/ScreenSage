@@ -1,19 +1,21 @@
 package api
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/qujing226/screen_sage/domain/model"
+	"github.com/qujing226/screen_sage/infrastructure/service/ocr"
 	"github.com/qujing226/screen_sage/internal/config"
-	"github.com/qujing226/screen_sage/internal/ocr"
 	"github.com/qujing226/screen_sage/internal/storage"
 )
 
@@ -22,7 +24,7 @@ import (
 type Server struct {
 	Port        int                      // 服务器监听端口
 	DBManager   *storage.DBManager       // 数据库管理器
-	OCRClient   ocr.OCRClient            // OCR客户端接口
+	OCRClient   *ocr.BaiduOCRProvider    // OCR客户端接口
 	DeepSeekKey string                   // DeepSeek API密钥
 	StaticPath  string                   // 静态文件路径
 	Clients     map[*websocket.Conn]bool // 已连接的WebSocket客户端
@@ -46,7 +48,7 @@ func NewServer(port int, dbPath string, baiduAPIKey string, baiduSecretKey strin
 	}
 
 	// 创建OCR客户端
-	ocrClient := ocr.NewBaiduOCRClient(baiduAPIKey, baiduSecretKey)
+	ocrClient := ocr.NewBaiduOCRProvider(baiduAPIKey, baiduSecretKey)
 
 	// 创建服务器
 	server := &Server{
@@ -270,21 +272,28 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 		// 调用DeepSeek处理文本
 		log.Printf("开始调用DeepSeek处理文本，处理ID: %s", processID)
-		answer, err := ocr.ProcessWithDeepSeek(text, s.DeepSeekKey)
+		//answer, err := ocr.ProcessWithDeepSeek(text, s.DeepSeekKey)
+		answer, err := "", nil
 		if err != nil {
 			log.Printf("DeepSeek处理失败: %v", err)
 			answer = "AI处理失败，但您仍然可以查看OCR识别的文本。"
 		} else {
 			log.Printf("DeepSeek处理成功，处理ID: %s，回答长度: %d", processID, len(answer))
 		}
-
+		// 读取answer的最后一行
+		title := strings.TrimSpace(strings.Split(answer, "\n")[len(strings.Split(answer, "\n"))-1])
+		ans := strings.TrimSpace(strings.Split(answer, "\n")[len(strings.Split(answer, "\n"))-2])
 		// 保存历史记录
 		record := &storage.HistoryRecord{
 			Timestamp: time.Now(),
 			ImagePath: "", // TODO: 保存图像文件
 			Thumbnail: request.Image,
 			Text:      text,
-			Answer:    answer,
+			Answer:    ans,
+			Title: sql.NullString{
+				String: title,
+				Valid:  true,
+			},
 		}
 
 		id, err := s.DBManager.AddHistory(record)
@@ -302,6 +311,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 				"answer":     answer,
 				"timestamp":  time.Now(),
 				"thumbnail":  request.Image, // 确保缩略图被传递到前端
+				"title":      title,
 			},
 		}
 	}()
@@ -379,20 +389,17 @@ func (s *Server) BroadcastScreenshot(screenshot *model.Screenshot) {
 			},
 		}
 
-		// 调用DeepSeek处理文本
-		answer, err := ocr.ProcessWithDeepSeek(text, s.DeepSeekKey)
-		if err != nil {
-			log.Printf("DeepSeek处理失败: %v", err)
-			answer = "AI处理失败，但您仍然可以查看OCR识别的文本。"
-		}
-
 		// 保存历史记录
 		record := &storage.HistoryRecord{
 			Timestamp: time.Now(),
 			ImagePath: "", // TODO: 保存图像文件
 			Thumbnail: imageBase64,
-			Text:      text,
-			Answer:    answer,
+			Text:      screenshot.Text,
+			Answer:    screenshot.Answer,
+			Title: sql.NullString{
+				String: screenshot.Title,
+				Valid:  true,
+			},
 		}
 
 		id, err := s.DBManager.AddHistory(record)
@@ -407,9 +414,10 @@ func (s *Server) BroadcastScreenshot(screenshot *model.Screenshot) {
 				"id":         id,
 				"process_id": processID,
 				"text":       text,
-				"answer":     answer,
+				"answer":     screenshot.Answer,
 				"timestamp":  time.Now(),
 				"thumbnail":  imageBase64,
+				"title":      screenshot.Title,
 			},
 		}
 	}()

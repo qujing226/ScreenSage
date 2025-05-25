@@ -11,12 +11,13 @@ import (
 
 // HistoryRecord 表示一条历史记录
 type HistoryRecord struct {
-	ID        int64     `json:"id"`
-	Timestamp time.Time `json:"timestamp"`
-	ImagePath string    `json:"image_path"`
-	Thumbnail string    `json:"thumbnail"`
-	Text      string    `json:"text"`
-	Answer    string    `json:"answer"`
+	ID        int64          `json:"id"`
+	Timestamp time.Time      `json:"timestamp"`
+	ImagePath string         `json:"image_path"`
+	Thumbnail string         `json:"thumbnail"`
+	Text      string         `json:"text"`
+	Answer    string         `json:"answer"`
+	Title     sql.NullString `json:"title"` // 修改此处
 }
 
 // DBManager 数据库管理器
@@ -63,13 +64,50 @@ func (m *DBManager) initTables() error {
 		image_path TEXT NOT NULL,
 		thumbnail TEXT NOT NULL,
 		text TEXT NOT NULL,
-		answer TEXT NOT NULL
+		answer TEXT NOT NULL,
+		title TEXT
 	);
 	`
 
 	_, err := m.db.Exec(query)
 	if err != nil {
 		return fmt.Errorf("创建历史记录表失败: %v", err)
+	}
+
+	// 检查title列是否存在，如果不存在则添加
+	query = `
+	PRAGMA table_info(history);
+	`
+	rows, err := m.db.Query(query)
+	if err != nil {
+		return fmt.Errorf("检查表结构失败: %v", err)
+	}
+	defer rows.Close()
+
+	titleExists := false
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, type_name string
+		var dflt_value sql.NullString
+		if err := rows.Scan(&cid, &name, &type_name, &notnull, &dflt_value, &pk); err != nil {
+			return fmt.Errorf("读取表结构失败: %v", err)
+		}
+		if name == "title" {
+			titleExists = true
+			break
+		}
+	}
+
+	if !titleExists {
+		// 添加title列
+		query = `
+		ALTER TABLE history ADD COLUMN title TEXT;
+		`
+		_, err = m.db.Exec(query)
+		if err != nil {
+			return fmt.Errorf("添加title列失败: %v", err)
+		}
+		log.Println("添加title列成功")
 	}
 
 	log.Println("数据库表初始化成功")
@@ -80,8 +118,8 @@ func (m *DBManager) initTables() error {
 func (m *DBManager) AddHistory(record *HistoryRecord) (int64, error) {
 	// 准备SQL语句
 	query := `
-	INSERT INTO history (timestamp, image_path, thumbnail, text, answer)
-	VALUES (?, ?, ?, ?, ?);
+	INSERT INTO history (timestamp, image_path, thumbnail, text, answer, title)
+	VALUES (?, ?, ?, ?, ?, ?);
 	`
 
 	// 执行插入
@@ -92,6 +130,7 @@ func (m *DBManager) AddHistory(record *HistoryRecord) (int64, error) {
 		record.Thumbnail,
 		record.Text,
 		record.Answer,
+		record.Title,
 	)
 	if err != nil {
 		return 0, fmt.Errorf("插入历史记录失败: %v", err)
@@ -110,7 +149,7 @@ func (m *DBManager) AddHistory(record *HistoryRecord) (int64, error) {
 func (m *DBManager) GetHistory(limit int) ([]HistoryRecord, error) {
 	// 准备SQL语句
 	query := `
-	SELECT id, timestamp, image_path, thumbnail, text, answer
+	SELECT id, timestamp, image_path, thumbnail, text, answer, title
 	FROM history
 	ORDER BY timestamp DESC
 	LIMIT ?;
@@ -134,9 +173,11 @@ func (m *DBManager) GetHistory(limit int) ([]HistoryRecord, error) {
 			&record.Thumbnail,
 			&record.Text,
 			&record.Answer,
+			&record.Title, // 现在是 sql.NullString
 		); err != nil {
 			return nil, fmt.Errorf("解析历史记录失败: %v", err)
 		}
+
 		records = append(records, record)
 	}
 
@@ -147,7 +188,7 @@ func (m *DBManager) GetHistory(limit int) ([]HistoryRecord, error) {
 func (m *DBManager) GetHistoryByID(id int64) (*HistoryRecord, error) {
 	// 准备SQL语句
 	query := `
-	SELECT id, timestamp, image_path, thumbnail, text, answer
+	SELECT id, timestamp, image_path, thumbnail, text, answer, title
 	FROM history
 	WHERE id = ?;
 	`
@@ -164,6 +205,7 @@ func (m *DBManager) GetHistoryByID(id int64) (*HistoryRecord, error) {
 		&record.Thumbnail,
 		&record.Text,
 		&record.Answer,
+		&record.Title,
 	); err != nil {
 		return nil, fmt.Errorf("获取历史记录失败: %v", err)
 	}

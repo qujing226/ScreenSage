@@ -2,18 +2,17 @@ package main
 
 import (
 	"fmt"
-	"github.com/qujing226/screen_sage/domain/model"
+	"github.com/qujing226/screen_sage/internal/storage"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/getlantern/systray"
 	"github.com/qujing226/screen_sage/application/service"
-	"github.com/qujing226/screen_sage/infrastructure/persistence"
-	"github.com/qujing226/screen_sage/infrastructure/service/ai"
 	"github.com/qujing226/screen_sage/infrastructure/service/ocr"
 	"github.com/qujing226/screen_sage/infrastructure/ui"
 	"github.com/qujing226/screen_sage/internal/config"
@@ -59,23 +58,21 @@ func main() {
 	// 使用配置中的API密钥
 
 	// 初始化仓库
-	repo, err := persistence.NewSQLiteRepository()
+	dbManager, err := storage.NewDBManager(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("初始化数据库仓库失败: %v", err)
 	}
-	defer repo.Close()
+	defer dbManager.Close()
 
 	// 初始化OCR提供者
 	ocrProvider := ocr.NewBaiduOCRProvider(cfg.BaiduAPIKey, cfg.BaiduSecretKey)
 
-	// 初始化AI提供者
-	aiProvider := ai.NewSimpleAIProvider()
-
+	deepseekKey := cfg.DeepSeekAPIKey
 	// 初始化截图服务
 	screenshotService = service.NewScreenshotService(
-		repo,
+		dbManager,
 		ocrProvider,
-		aiProvider,
+		deepseekKey,
 	)
 
 	// 启动系统托盘
@@ -102,14 +99,30 @@ func main() {
 func onReady() {
 	// 加载应用图标
 	// 使用绝对路径加载资源（适用于 Windows）
-	//iconPath := "C:/Users/qujin/Desktop/src//screen_sage.png" // 建议打包时指定安装目录下的图标
-	//iconData, err := os.ReadFile(iconPath)
-	//if err != nil {
-	//	log.Printf("加载应用图标失败: %v", err)
-	//	return
-	//}
+	execDir, err := os.Executable()
+	if err != nil {
+		log.Printf("获取可执行文件路径失败: %v", err)
+	}
 
-	//systray.SetIcon(iconData)
+	// 使用可执行文件所在目录作为基础目录
+	baseDir := filepath.Dir(execDir)
+	iconPath := filepath.Join(baseDir, "/src/screen_sage.ico")
+
+	// 尝试读取图标文件
+	iconData, err := os.ReadFile(iconPath)
+	if err != nil {
+		log.Printf("加载应用图标失败: %v", err)
+		// 尝试从项目根目录读取
+		iconPath = filepath.Join(baseDir, "../..", "screen_sage.png")
+		iconData, err = os.ReadFile(iconPath)
+		if err != nil {
+			log.Printf("从备用路径加载应用图标失败: %v", err)
+		}
+	}
+
+	if iconData != nil {
+		systray.SetIcon(iconData)
+	}
 
 	// 设置系统托盘图标和菜单
 	systray.SetTitle("ScreenSage")
@@ -180,13 +193,7 @@ func processScreenshot() {
 			}
 
 			// 广播到客户端
-			s := model.Screenshot{
-				ID:        screen.ID,
-				Timestamp: screen.Timestamp,
-				Text:      screen.Text,
-				Answer:    screen.Answer,
-			}
-			fmt.Printf("正在将 %+v 广播到客户端\n", s)
+			fmt.Printf("正在将 %+v 广播到客户端\n", screen.Title)
 			server := getServerInstance()
 			if server != nil {
 				server.BroadcastScreenshot(screen)

@@ -1,15 +1,18 @@
 package service
 
 import (
+	"database/sql"
 	"encoding/base64"
 	"fmt"
+	"github.com/qujing226/screen_sage/internal/ocr"
+	"github.com/qujing226/screen_sage/internal/storage"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/qujing226/screen_sage/domain/model"
-	"github.com/qujing226/screen_sage/domain/repository"
 )
 
 // OCRProvider 定义OCR服务提供者接口
@@ -24,21 +27,22 @@ type AIProvider interface {
 
 // ScreenshotService 截图服务
 type ScreenshotService struct {
-	Repository  repository.ScreenshotRepository
+	Db          *storage.DBManager
 	OCRProvider OCRProvider
-	AIProvider  AIProvider
+	//AIProvider  AIProvider
+	DeepseekKey string
 }
 
 // NewScreenshotService 创建截图服务
 func NewScreenshotService(
-	repo repository.ScreenshotRepository,
+	db *storage.DBManager,
 	ocrProvider OCRProvider,
-	aiProvider AIProvider,
+	deepseekKey string,
 ) *ScreenshotService {
 	return &ScreenshotService{
-		Repository:  repo,
+		Db:          db,
 		OCRProvider: ocrProvider,
-		AIProvider:  aiProvider,
+		DeepseekKey: deepseekKey,
 	}
 }
 
@@ -46,7 +50,16 @@ func NewScreenshotService(
 func (s *ScreenshotService) ProcessScreenshot(imgBytes []byte) (*model.Screenshot, error) {
 	// 保存图片到文件
 	timestamp := time.Now().Format("20060102150405")
-	imageDir := filepath.Join(os.Getenv("HOME"), ".screensage", "images")
+
+	// 获取当前可执行文件所在目录
+	execDir, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("获取可执行文件路径失败: %v", err)
+	}
+
+	// 使用可执行文件所在目录作为基础目录
+	baseDir := filepath.Dir(execDir)
+	imageDir := filepath.Join(baseDir, "images")
 	if err := os.MkdirAll(imageDir, 0755); err != nil {
 		return nil, fmt.Errorf("创建图片目录失败: %v", err)
 	}
@@ -71,22 +84,37 @@ func (s *ScreenshotService) ProcessScreenshot(imgBytes []byte) (*model.Screensho
 	}
 
 	// AI生成回答
-	answer, err := s.GenerateAnswer(text)
+	answer, err := ocr.ProcessWithDeepSeek(text, s.DeepseekKey)
 	if err != nil {
 		log.Printf("生成回答失败: %v", err)
 		answer = "无法生成回答"
 	}
 
+	// 获取最后一行作为标题
+	title := strings.TrimSpace(strings.Split(answer, "\n")[len(strings.Split(answer, "\n"))-1])
+	// 剩余内容作为回答回答正文
+	answer = strings.Join(strings.Split(answer, "\n")[:len(strings.Split(answer, "\n"))-2], "\n")
 	// 创建截图实体
 	screenshot := model.NewScreenshot(
 		imagePath,
 		"data:image/png;base64,"+imageBase64, // 缩略图直接使用Base64
 		text,
 		answer,
+		title,
 	)
 
 	// 保存到仓库
-	id, err := s.Repository.Save(screenshot)
+	id, err := s.Db.AddHistory(&storage.HistoryRecord{
+		Timestamp: screenshot.Timestamp,
+		ImagePath: screenshot.ImagePath,
+		Thumbnail: screenshot.Thumbnail,
+		Text:      screenshot.Text,
+		Answer:    screenshot.Answer,
+		Title: sql.NullString{
+			String: screenshot.Title,
+			Valid:  screenshot.Title != "",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("保存截图记录失败: %v", err)
 	}
@@ -100,12 +128,21 @@ func (s *ScreenshotService) OcrRecognize(imageBase64 string) (string, error) {
 	return s.OCRProvider.RecognizeText(imageBase64)
 }
 
-// GenerateAnswer 生成回答
-func (s *ScreenshotService) GenerateAnswer(text string) (string, error) {
-	return s.AIProvider.GenerateAnswer(text)
-}
-
 // GetRecentScreenshots 获取最近的截图
 func (s *ScreenshotService) GetRecentScreenshots(limit int) ([]*model.Screenshot, error) {
-	return s.Repository.FindRecent(limit)
+	res, err := s.Db.GetHistory(limit)
+	if err != nil {
+		return nil, fmt.Errorf("获取最近截图失败: %v", err)
+	}
+	screenshots := make([]*model.Screenshot, len(res))
+	for i, record := range res {
+		screenshots[i] = model.NewScreenshot(
+			record.ImagePath,
+			record.Thumbnail,
+			record.Text,
+			record.Answer,
+			record.Title.String,
+		)
+	}
+	return screenshots, nil
 }

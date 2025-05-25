@@ -34,7 +34,7 @@ func GetConfig() *Config {
 	once.Do(func() {
 		instance = &Config{
 			// 默认配置
-			Port:       8080,
+			Port:       8081,
 			StaticPath: "./web/frontend/dist",
 			DBPath:     getDefaultDBPath(),
 		}
@@ -49,29 +49,31 @@ func GetConfig() *Config {
 
 // 获取默认数据库路径
 func getDefaultDBPath() string {
-	// 获取用户主目录
-	homeDir, err := os.UserHomeDir()
+	// 获取当前可执行文件所在目录
+	execDir, err := os.Executable()
 	if err != nil {
-		// 如果无法获取主目录，使用当前目录
+		// 如果无法获取可执行文件路径，使用当前目录
 		return "./data/screensage.db"
 	}
 
-	// 在用户主目录下创建应用数据目录
-	dataDir := filepath.Join(homeDir, ".screensage")
+	// 使用可执行文件所在目录作为基础目录
+	baseDir := filepath.Dir(execDir)
+	dataDir := filepath.Join(baseDir, "data")
 	return filepath.Join(dataDir, "screensage.db")
 }
 
 // 获取配置文件路径
 func getConfigFilePath() string {
-	// 获取用户主目录
-	homeDir, err := os.UserHomeDir()
+	// 获取当前可执行文件所在目录
+	execDir, err := os.Executable()
 	if err != nil {
-		// 如果无法获取主目录，使用当前目录
+		// 如果无法获取可执行文件路径，使用当前目录
 		return "./config.json"
 	}
 
-	// 在用户主目录下创建应用配置目录
-	configDir := filepath.Join(homeDir, ".screensage")
+	// 使用可执行文件所在目录作为基础目录
+	baseDir := filepath.Dir(execDir)
+	configDir := filepath.Join(baseDir, "config")
 	return filepath.Join(configDir, "config.json")
 }
 

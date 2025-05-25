@@ -12,15 +12,17 @@ type Screenshot struct {
 	Thumbnail string    `json:"thumbnail"`
 	Text      string    `json:"text"`
 	Answer    string    `json:"answer"`
+	Title     string    `json:"title"`
 }
 
 // NewScreenshot 创建一个新的截图实体
-func NewScreenshot(imagePath, thumbnail, text, answer string) *Screenshot {
+func NewScreenshot(imagePath, thumbnail, text, answer, title string) *Screenshot {
 	return &Screenshot{
 		Timestamp: time.Now(),
 		ImagePath: imagePath,
 		Thumbnail: thumbnail,
 		Text:      text,
 		Answer:    answer,
+		Title:     title,
 	}
 }

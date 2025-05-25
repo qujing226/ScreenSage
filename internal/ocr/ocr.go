@@ -259,12 +259,6 @@ func (c *DeepSeekOCRClient) RecognizeText(imageBase64 string) (string, error) {
 	return ocrResp.Text, nil
 }
 
-// MockRecognizeText 模拟OCR识别，用于开发测试
-func MockRecognizeText(imageBase64 string) (string, error) {
-	// 返回模拟的OCR结果
-	return "这是一个模拟的OCR识别结果，用于开发测试。实际使用时请替换为真实的API调用。", nil
-}
-
 // ProcessWithDeepSeek 将OCR识别的文本发送给DeepSeek进行处理
 // 此函数负责将OCR识别的文本发送到DeepSeek API进行分析和处理
 // 参数:
@@ -288,9 +282,14 @@ func ProcessWithDeepSeek(text string, apiKey string) (string, error) {
 	endpoint := "https://api.deepseek.com/v1/chat/completions"
 
 	// 构建专门的提示词模板
-	systemPrompt := "你是一个专业的屏幕内容分析助手。以下是通过OCR技术从屏幕截图中识别出的文本内容。请分析这些文本，找出其中包含的问题或关键信息，然后给出清晰、准确的回答或解释。如果文本中包含代码或错误信息，请特别关注并提供相关的解决方案。"
+	systemPrompt := "你是一个专业的屏幕内容分析助手。以下是通过OCR技术从屏幕截图中识别出的文本内容。请分析这些文本，找出其中包含的问题或关键信息，然后给出清晰、准确的回答或解释。如果文本中包含代码或错误信息，请特别关注并提供相关的解决方案。在回答的最后一行，请用一句简短的话提炼出本次问答的关键信息，作为标题，格式为'【标题】xxx'。"
 
-	userPrompt := fmt.Sprintf("以下是从屏幕截图中识别出的文本内容：\n\n%s\n\n请分析上述内容，找出其中的问题或关键信息，并给出专业的回答。", text)
+	userPrompt := fmt.Sprintf(
+		"你的任务: a.分析上述内容，找出其中描述的问题,可能是一道算法题，也可能只是一个问题，给出具体的答。 "+
+			"b.最后一行提炼出本次回答的关键信息，我将作为本次问答的标题，需要单独放在一行，10字内即可。例如：【算法】字符串解码"+
+			"你的思考过程：这些内容是一个屏幕的OCR识图，因此有些内容是干扰我的信息，比如开头会有一些浏览器的标题字样。我应该从中间内容读取。"+
+			"提炼关键内容，思考，并给出解答。在问答的末尾，我应该做一个标题，单独放在一行。"+
+			"以下是从屏幕截图中识别出的文本内容：\n\n%s\n\n", text)
 
 	// 准备请求数据
 	reqData := map[string]interface{}{
@@ -300,7 +299,7 @@ func ProcessWithDeepSeek(text string, apiKey string) (string, error) {
 			{"role": "user", "content": userPrompt},
 		},
 		"temperature": 0.7,
-		"max_tokens":  2000, // 设置最大输出长度
+		"max_tokens":  3000, // 设置最大输出长度
 	}
 
 	// 将请求数据转换为JSON
